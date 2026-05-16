@@ -46,6 +46,7 @@
         statusText: $("#status-text"),
         toast: $("#toast"),
         saveBtn: $("#save-settings-btn"),
+        flushBtn: $("#flush-dpi-btn"),
         donateKofi: $("#btn-donate-kofi"),
         // Info cards
         infoMode: $("#info-mode"),
@@ -85,6 +86,7 @@
             setting_proxy_port: "Proxy Port",
             setting_autostart: "Auto Start",
             setting_save: "Save Settings",
+            setting_flush: "Manual Cleanup (Flush DPI)",
             donate_title: "Donate",
             donate_desc: "SxDPI is an open-source and free project. If you want to support development, you can do so via Ko-Fi.",
             donate_kofi: "Support via Ko-Fi!",
@@ -110,6 +112,7 @@
             setting_proxy_port: "Proxy Portu",
             setting_autostart: "Otomatik Başlat",
             setting_save: "Ayarları Kaydet",
+            setting_flush: "Manuel Temizlik (Flush DPI)",
             donate_title: "Bağış",
             donate_desc: "SxDPI açık kaynaklı ve ücretsiz bir projedir. Geliştirmeye devam etmemize destek olmak isterseniz Ko-Fi üzerinden destek olabilirsiniz.",
             donate_kofi: "Ko-Fi üzerinden destek ol!",
@@ -182,6 +185,22 @@
 
         // Ayarları kaydet
         dom.saveBtn.addEventListener("click", saveSettings);
+
+        // Manuel Temizlik
+        if (dom.flushBtn) {
+            dom.flushBtn.addEventListener("click", async () => {
+                if (invoke) {
+                    try {
+                        const msg = await invoke("flush_dpi");
+                        showToast(msg, "success");
+                    } catch (e) {
+                        showToast("Hata: " + e, "error");
+                    }
+                } else {
+                    showToast("Flush DPI sadece masaüstünde çalışır.", "error");
+                }
+            });
+        }
 
         // Bağış linki (Güvenli şekilde tarayıcıda açar)
         if (dom.donateKofi) {

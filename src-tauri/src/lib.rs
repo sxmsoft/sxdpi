@@ -48,6 +48,7 @@ pub fn run() {
             commands::get_status,
             commands::save_settings,
             commands::load_settings,
+            commands::flush_dpi,
         ])
         // ─── Sistem Tray + Window Setup ─────────────────────────────
         .setup(|app| {

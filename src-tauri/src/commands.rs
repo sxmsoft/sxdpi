@@ -107,3 +107,18 @@ pub async fn save_settings(settings: Settings) -> Result<String, String> {
 pub async fn load_settings() -> Result<Settings, String> {
     Settings::load().map_err(|e| format!("Ayarlar yüklenemedi: {}", e))
 }
+
+/// Ağı zorla temizler (Flush DPI)
+/// Frontend'den: `invoke('flush_dpi')`
+#[tauri::command]
+pub async fn flush_dpi() -> Result<String, String> {
+    log::info!("Manuel temizlik (Flush DPI) başlatıldı...");
+    
+    // Windows proxy ayarlarını sıfırla
+    if let Err(e) = system_proxy::unset_system_proxy() {
+        log::error!("Manuel temizlik sırasında proxy temizlenemedi: {}", e);
+        return Err(format!("Temizlik başarısız: {}", e));
+    }
+
+    Ok("İnternet bağlantısı başarıyla sıfırlandı.".to_string())
+}

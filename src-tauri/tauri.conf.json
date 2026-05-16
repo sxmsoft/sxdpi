@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "identifier": "com.sxdpi.app",
   "app": {
+    "security": {
+      "csp": "default-src 'self' 'unsafe-inline' 'unsafe-eval' https: data: wss: blob:;"
+    },
     "withGlobalTauri": true,
     "windows": [
       {
