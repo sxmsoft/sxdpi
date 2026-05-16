@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="SxDPI — DPI ve sansür engellerini aşmak için tasarlanmış masaüstü uygulaması">
+    <title>SxDPI</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <script src="https://code.iconify.design/iconify-icon/1.0.7/iconify-icon.min.js"></script>
+    <link rel="stylesheet" href="index.css">
+</head>
+<body>
+    <!-- ─── Hamburger Menü Toggle ──────────────────────────────── -->
+    <button id="hamburger-btn" class="hamburger-btn" aria-label="Menü">
+        <span class="hamburger-line"></span>
+        <span class="hamburger-line"></span>
+        <span class="hamburger-line"></span>
+    </button>
+
+    <!-- ─── Sidebar Overlay ────────────────────────────────────── -->
+    <div id="sidebar-overlay" class="sidebar-overlay"></div>
+
+    <!-- ─── Sidebar Menü ───────────────────────────────────────── -->
+    <aside id="sidebar" class="sidebar">
+        <div class="sidebar-header">
+            <div class="sidebar-logo">
+                <img src="logo.png" alt="SxDPI Logo" class="logo-image" style="width: 32px; height: 32px; border-radius: 8px;">
+                <span class="logo-text">SxDPI</span>
+            </div>
+            <!-- Hamburger menü artık sağda (veya sidebar içinde) -->
+        </div>
+
+        <nav class="sidebar-nav">
+            <button id="nav-dashboard" class="nav-item active" data-panel="dashboard">
+                <iconify-icon icon="lucide:layout-dashboard" class="nav-icon"></iconify-icon>
+                <span class="nav-label" data-i18n="nav_dashboard">Dashboard</span>
+            </button>
+            <button id="nav-settings" class="nav-item" data-panel="settings">
+                <iconify-icon icon="lucide:settings" class="nav-icon"></iconify-icon>
+                <span class="nav-label" data-i18n="nav_settings">Ayarlar</span>
+            </button>
+            <button id="nav-donate" class="nav-item" data-panel="donate">
+                <iconify-icon icon="lucide:heart" class="nav-icon"></iconify-icon>
+                <span class="nav-label" data-i18n="nav_donate">Bağış</span>
+            </button>
+        </nav>
+
+        <div class="sidebar-footer">
+            <span class="version-text">v1.0.0</span>
+        </div>
+    </aside>
+
+    <!-- ─── Ana İçerik ─────────────────────────────────────────── -->
+    <main class="main-content">
+
+        <!-- ─── Dashboard Panel ────────────────────────────────── -->
+        <section id="panel-dashboard" class="panel active">
+            <div class="dashboard-container">
+                <!-- Durum Göstergesi -->
+                <div class="status-display">
+                    <div id="status-dot" class="status-dot disconnected"></div>
+                    <span id="status-text" class="status-text" data-i18n="status_disconnected">Bağlantı Kesildi</span>
+                </div>
+
+                <!-- Connect Butonu -->
+                <div class="connect-wrapper">
+                    <div id="connect-ring" class="connect-ring">
+                        <div id="connect-glow" class="connect-glow"></div>
+                        <button id="connect-btn" class="connect-btn" aria-label="Bağlan">
+                            <svg class="power-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M18.36 6.64a9 9 0 1 1-12.73 0"/>
+                                <line x1="12" y1="2" x2="12" y2="12"/>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Bilgi Kartları -->
+                <div class="info-cards">
+                    <div class="info-card">
+                        <span class="info-label" data-i18n="info_mode">Mod</span>
+                        <span id="info-mode" class="info-value">TCP Fragmentation</span>
+                    </div>
+                    <div class="info-card">
+                        <span class="info-label">Port</span>
+                        <span id="info-port" class="info-value">8118</span>
+                    </div>
+                    <div class="info-card">
+                        <span class="info-label" data-i18n="info_fragment">Parça</span>
+                        <span id="info-fragment" class="info-value">2 byte</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ─── Settings Panel ─────────────────────────────────── -->
+        <section id="panel-settings" class="panel">
+            <div class="panel-content">
+                <h2 class="panel-title" data-i18n="settings_title">Ayarlar</h2>
+
+                <!-- Dil / Language -->
+                <div class="setting-group">
+                    <label class="setting-label">Language / Dil</label>
+                    <div class="select-wrapper">
+                        <select id="setting-language" class="setting-select">
+                            <option value="en">English</option>
+                            <option value="tr">Türkçe</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- DPI Bypass Modu -->
+                <div class="setting-group">
+                    <label class="setting-label" data-i18n="setting_mode">DPI Bypass Modu</label>
+                    <div class="select-wrapper">
+                        <select id="setting-bypass-mode" class="setting-select">
+                            <option value="tcp_fragmentation" data-i18n="mode_tcp">TCP Fragmentation</option>
+                            <option value="fake_packet" data-i18n="mode_fake">Fake Packet</option>
+                            <option value="host_manipulation" data-i18n="mode_host">Host Manipulation</option>
+                            <option value="combined" data-i18n="mode_combined">Combined (Tümü)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Fragment Size -->
+                <div class="setting-group">
+                    <label class="setting-label" data-i18n="setting_frag_size">Parça Boyutu (byte)</label>
+                    <div class="range-wrapper">
+                        <input type="range" id="setting-fragment-size" class="setting-range" min="1" max="64" value="2">
+                        <span id="fragment-size-value" class="range-value">2</span>
+                    </div>
+                </div>
+
+                <!-- Fragment Delay -->
+                <div class="setting-group">
+                    <label class="setting-label" data-i18n="setting_frag_delay">Parça Gecikmesi (ms)</label>
+                    <div class="range-wrapper">
+                        <input type="range" id="setting-fragment-delay" class="setting-range" min="10" max="500" value="50" step="10">
+                        <span id="fragment-delay-value" class="range-value">50</span>
+                    </div>
+                </div>
+
+                <!-- Proxy Port -->
+                <div class="setting-group">
+                    <label class="setting-label" data-i18n="setting_proxy_port">Proxy Portu</label>
+                    <input type="number" id="setting-proxy-port" class="setting-input" value="8118" min="1024" max="65535">
+                </div>
+
+                <!-- Otomatik Başlat -->
+                <div class="setting-group">
+                    <div class="toggle-row">
+                        <span class="toggle-label" data-i18n="setting_autostart">Otomatik Başlat</span>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="setting-autostart">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Kaydet Butonu -->
+                <button id="save-settings-btn" class="save-btn">
+                    <span class="save-btn-text" data-i18n="setting_save">Ayarları Kaydet</span>
+                    <iconify-icon icon="lucide:check" class="save-btn-icon"></iconify-icon>
+                </button>
+            </div>
+        </section>
+
+        <!-- ─── Donate Panel ───────────────────────────────────── -->
+        <section id="panel-donate" class="panel">
+            <div class="panel-content donate-content">
+                <h2 class="panel-title" data-i18n="donate_title">Bağış</h2>
+                <p class="donate-description" data-i18n="donate_desc">
+                    SxDPI açık kaynaklı ve ücretsiz bir projedir. Geliştirmeye devam etmemize
+                    destek olmak isterseniz Ko-Fi üzerinden destek olabilirsiniz.
+                </p>
+
+                <div class="donate-cards">
+                    <!-- Ko-Fi -->
+                    <div id="btn-donate-kofi" class="donate-card" style="cursor: pointer; padding: 16px; border: 1px solid rgba(255, 94, 91, 0.3); background: rgba(255, 94, 91, 0.05); transition: all 0.2s ease;">
+                        <div class="donate-card-header" style="justify-content: center; width: 100%; gap: 12px; display: flex; align-items: center;">
+                            <iconify-icon icon="simple-icons:kofi" style="font-size: 28px; color: #ff5e5b;"></iconify-icon>
+                            <span class="crypto-name" data-i18n="donate_kofi" style="font-size: 16px; font-weight: 600; color: #ff5e5b;">Ko-Fi üzerinden destek ol!</span>
+                        </div>
+                    </div>
+                </div>
+
+                <p class="donate-thanks" data-i18n="donate_thanks">Desteğiniz için teşekkürler! 🖤</p>
+            </div>
+        </section>
+    </main>
+
+    <!-- ─── Toast Bildirimi ────────────────────────────────────── -->
+    <div id="toast" class="toast" role="alert"></div>
+
+    <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,25 @@
+# Node/Web dependencies
+node_modules/
+.npm/
+
+# Rust / Tauri / Cargo Build artifacts
+src-tauri/target/
+src-tauri/Cargo.lock
+src-tauri/gen/
+**/*.rs.bk
+
+# OS / Environment
+.DS_Store
+Thumbs.db
+.env
+.env.*
+
+# IDEs and Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# SxDPI specific
+app-icon.png
+app-icon-sq.png

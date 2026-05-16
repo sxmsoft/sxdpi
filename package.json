@@ -1,0 +1,13 @@
+{
+  "name": "sxdpi",
+  "version": "1.0.0",
+  "description": "SxDPI — DPI Bypass Desktop Application",
+  "scripts": {
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2"
+  }
+}

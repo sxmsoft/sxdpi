@@ -1,0 +1,31 @@
+{
+  "productName": "SxDPI",
+  "version": "1.0.0",
+  "identifier": "com.sxdpi.app",
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "title": "SxDPI",
+        "width": 440,
+        "height": 700,
+        "resizable": true,
+        "center": true,
+        "decorations": true,
+        "transparent": false
+      }
+    ]
+  },
+  "build": {
+    "frontendDist": "../src"
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/icon.ico",
+      "icons/icon.png"
+    ]
+  },
+  "plugins": {}
+}

@@ -1,0 +1,31 @@
+[package]
+name = "sxdpi"
+version = "1.0.0"
+edition = "2021"
+description = "SxDPI — DPI Bypass Desktop Application"
+authors = ["SxDPI Contributors"]
+
+[lib]
+name = "sxdpi_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-shell = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+thiserror = "2"
+log = "0.4"
+env_logger = "0.11"
+dirs = "6"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1
+panic = "abort"

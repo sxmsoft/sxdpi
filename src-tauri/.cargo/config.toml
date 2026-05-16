@@ -1,0 +1,5 @@
+[build]
+# Tek thread ile derleme — antivirus dosya kilitleme sorununu azaltır
+jobs = 1
+# target dizinini farklı bir konuma taşı (antivirus taramasından kaçınmak için)
+target-dir = "C:\\sxdpi-target"
