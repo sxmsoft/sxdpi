@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="https://github.com/sxmsoft/sxdpi/assets/media/logo.png" alt="SxDPI Logo" width="256">
+  <img src="https://github.com/sxmsoft/sxdpi/src-tauri/icons/128x128.png" alt="SxDPI Logo" width="256">
 
   # SxDPI 0.1
   **Advanced DPI Bypass Desktop Application**
