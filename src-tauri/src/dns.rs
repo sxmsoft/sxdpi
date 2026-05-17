@@ -1,6 +1,16 @@
 use std::net::{IpAddr, Ipv4Addr};
+use std::collections::HashMap;
+use std::sync::{OnceLock, RwLock};
+use std::time::{Instant, Duration};
 use reqwest::Client;
 use serde::Deserialize;
+
+// DNS Önbelleği (Domain -> (IP, Eklenme Zamanı))
+static DNS_CACHE: OnceLock<RwLock<HashMap<String, (IpAddr, Instant)>>> = OnceLock::new();
+
+fn get_cache() -> &'static RwLock<HashMap<String, (IpAddr, Instant)>> {
+    DNS_CACHE.get_or_init(|| RwLock::new(HashMap::new()))
+}
 
 #[derive(Deserialize)]
 struct DoHResponse {
@@ -24,6 +34,17 @@ pub async fn resolve(hostname: &str) -> Result<IpAddr, String> {
         return Ok(ip);
     }
 
+    // Cache Kontrolü (TTL: 1 Saat)
+    {
+        let cache = get_cache().read().unwrap();
+        if let Some((ip, time)) = cache.get(hostname) {
+            if time.elapsed() < Duration::from_secs(3600) {
+                log::debug!("Cache'den DNS çözüldü: {} → {}", hostname, ip);
+                return Ok(*ip);
+            }
+        }
+    }
+
     let client = Client::builder()
         .timeout(std::time::Duration::from_secs(4))
         .build()
@@ -39,6 +60,10 @@ pub async fn resolve(hostname: &str) -> Result<IpAddr, String> {
         match query_doh(&client, endpoint, hostname).await {
             Ok(ip) => {
                 log::info!("DoH çözümlendi ({}): {} → {}", endpoint, hostname, ip);
+                // Cache'e ekle
+                if let Ok(mut cache) = get_cache().write() {
+                    cache.insert(hostname.to_string(), (ip, Instant::now()));
+                }
                 return Ok(ip);
             }
             Err(e) => {
@@ -53,8 +78,13 @@ pub async fn resolve(hostname: &str) -> Result<IpAddr, String> {
     match tokio::net::lookup_host(format!("{}:0", hostname)).await {
         Ok(mut addrs) => {
             if let Some(addr) = addrs.next() {
-                log::info!("Sistem DNS çözümlendi: {} → {}", hostname, addr.ip());
-                return Ok(addr.ip());
+                let ip = addr.ip();
+                log::info!("Sistem DNS çözümlendi: {} → {}", hostname, ip);
+                // Cache'e ekle
+                if let Ok(mut cache) = get_cache().write() {
+                    cache.insert(hostname.to_string(), (ip, Instant::now()));
+                }
+                return Ok(ip);
             }
             Err(format!("Sistem DNS: {} için kayıt bulunamadı", hostname))
         }

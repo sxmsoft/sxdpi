@@ -230,31 +230,41 @@ impl DpiEngine {
 
         // TLS ClientHello'yu yakala
         let mut tls_buf = vec![0u8; 16384];
-        let tls_n = tokio::select! {
-            result = client.read(&mut tls_buf) => result?,
-            _ = sleep(Duration::from_secs(10)) => {
-                log::warn!("TLS timeout: {}", target_addr);
-                return Err(EngineError::ConnectionError("TLS timeout".into()));
+        let mut tls_n = 0;
+        let mut timed_out = false;
+        
+        tokio::select! {
+            result = client.read(&mut tls_buf) => {
+                match result {
+                    Ok(n) => tls_n = n,
+                    Err(e) => return Err(e.into()),
+                }
+            },
+            _ = sleep(Duration::from_secs(3)) => {
+                log::warn!("TLS bekleme zaman aşımı (3s), direkt şeffaf tünel başlatılıyor: {}", target_addr);
+                timed_out = true;
             }
         };
 
-        if tls_n == 0 {
+        if tls_n == 0 && !timed_out {
             return Ok(());
         }
 
-        let tls_data = &tls_buf[..tls_n];
+        if !timed_out && tls_n > 0 {
+            let tls_data = &tls_buf[..tls_n];
 
-        // TLS ClientHello kontrolü: ContentType=0x16, HandshakeType=0x01
-        let is_client_hello = tls_n >= 6
-            && tls_data[0] == 0x16
-            && tls_data[5] == 0x01;
+            // TLS ClientHello kontrolü: ContentType=0x16, HandshakeType=0x01
+            let is_client_hello = tls_n >= 6
+                && tls_data[0] == 0x16
+                && tls_data[5] == 0x01;
 
-        if is_client_hello {
-            log::info!("TLS ClientHello ({} byte) → bypass: {}", tls_n, target_addr);
-            Self::send_with_bypass(&mut server, tls_data, settings).await?;
-        } else {
-            log::info!("TLS olmayan veri ({} byte) → direkt: {}", tls_n, target_addr);
-            server.write_all(tls_data).await?;
+            if is_client_hello {
+                log::info!("TLS ClientHello ({} byte) → bypass: {}", tls_n, target_addr);
+                Self::send_with_bypass(&mut server, tls_data, settings).await?;
+            } else {
+                log::info!("TLS olmayan veri ({} byte) → direkt: {}", tls_n, target_addr);
+                server.write_all(tls_data).await?;
+            }
         }
 
         // Bidirectional relay
