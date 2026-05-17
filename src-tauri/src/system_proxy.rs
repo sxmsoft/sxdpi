@@ -67,7 +67,7 @@ pub fn set_system_proxy(port: u16) -> Result<(), ProxyError> {
             r"HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings",
             "/v", "ProxyOverride",
             "/t", "REG_SZ",
-            "/d", "localhost;127.0.0.1;<local>",
+            "/d", "localhost;127.0.0.1;<local>;*.microsoft.com;*.windowsupdate.com;*.roblox.com;*.rbxcdn.com;clientsettingscdn.roblox.com;*.robloxlabs.com",
             "/f",
         ])
         .output()?;

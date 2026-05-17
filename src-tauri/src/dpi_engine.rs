@@ -329,8 +329,9 @@ impl DpiEngine {
                     modified_request.push_str(&format!("X-Padding: {}\r\n", "x".repeat(32)));
                 }
             } else if lower.starts_with("proxy-connection:") {
-                let value = line.splitn(2, ':').nth(1).unwrap_or("keep-alive").trim();
-                modified_request.push_str(&format!("Connection: {}\r\n", value));
+                modified_request.push_str("Connection: close\r\n");
+            } else if lower.starts_with("connection:") {
+                modified_request.push_str("Connection: close\r\n");
             } else {
                 modified_request.push_str(line);
                 modified_request.push_str("\r\n");

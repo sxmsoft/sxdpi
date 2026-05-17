@@ -120,5 +120,13 @@ pub async fn flush_dpi() -> Result<String, String> {
         return Err(format!("Temizlik başarısız: {}", e));
     }
 
-    Ok("İnternet bağlantısı başarıyla sıfırlandı.".to_string())
+    // DNS Cache temizle (ipconfig /flushdns)
+    if cfg!(target_os = "windows") {
+        let _ = std::process::Command::new("ipconfig")
+            .arg("/flushdns")
+            .output();
+        log::info!("DNS önbelleği temizlendi.");
+    }
+
+    Ok("İnternet bağlantısı ve DNS başarıyla sıfırlandı.".to_string())
 }
