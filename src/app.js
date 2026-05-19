@@ -49,6 +49,9 @@
         flushBtn: $("#flush-dpi-btn"),
         donateKofi: $("#btn-donate-kofi"),
         // Info cards
+        quickModeCard: $("#quick-mode-card"),
+        quickModeMenu: $("#quick-mode-menu"),
+        quickModeOptions: $$(".quick-mode-option"),
         infoMode: $("#info-mode"),
         infoPort: $("#info-port"),
         infoFragment: $("#info-fragment"),
@@ -78,6 +81,7 @@
             settings_title: "Settings",
             setting_mode: "DPI Bypass Mode",
             mode_tcp: "TCP Fragmentation",
+            mode_alt: "SxDPI Alternative",
             mode_fake: "Fake Packet",
             mode_host: "Host Manipulation",
             mode_combined: "Combined (All)",
@@ -104,6 +108,7 @@
             settings_title: "Ayarlar",
             setting_mode: "DPI Bypass Modu",
             mode_tcp: "TCP Fragmentation",
+            mode_alt: "SxDPI Alternative",
             mode_fake: "Fake Packet",
             mode_host: "Host Manipulation",
             mode_combined: "Combined (Tümü)",
@@ -137,6 +142,7 @@
 
     const modeNames = {
         tcp_fragmentation: "TCP Frag",
+        dpi_alternative: "SxDPI Alternative",
         fake_packet: "Fake Packet",
         host_manipulation: "Host Manip",
         combined: "Combined",
@@ -169,6 +175,14 @@
 
         // Connect butonu
         dom.connectBtn.addEventListener("click", handleConnect);
+
+        if (dom.quickModeCard && dom.quickModeMenu) {
+            dom.quickModeCard.addEventListener("click", toggleQuickModeMenu);
+            dom.quickModeCard.addEventListener("keydown", handleQuickModeKeydown);
+            dom.quickModeOptions.forEach((option) => {
+                option.addEventListener("click", handleQuickModeOption);
+            });
+        }
 
         // Range slider güncellemeleri
         dom.fragmentSize.addEventListener("input", (e) => {
@@ -217,6 +231,15 @@
         document.addEventListener("keydown", (e) => {
             if (e.key === "Escape" && state.sidebarOpen) {
                 closeSidebar();
+            }
+            if (e.key === "Escape") {
+                closeQuickModeMenu();
+            }
+        });
+
+        document.addEventListener("click", (e) => {
+            if (!dom.quickModeCard?.contains(e.target)) {
+                closeQuickModeMenu();
             }
         });
 
@@ -282,16 +305,20 @@
     async function connect() {
         state.connecting = true;
         updateUI("connecting");
+        let result = null;
 
         try {
             if (invoke) {
-                const result = await invoke("connect_dpi");
+                result = await invoke("connect_dpi");
                 console.log("Connect:", result);
             }
             state.connected = true;
             state.connecting = false;
             updateUI("connected");
-            showToast("DPI Bypass aktif!", "success");
+            const message = result === "SxDPI Alternative On" || state.settings.bypass_mode === "dpi_alternative"
+                ? "SxDPI Alternative On"
+                : "DPI Bypass aktif!";
+            showToast(message, "success");
         } catch (err) {
             state.connecting = false;
             state.connected = false;
@@ -322,6 +349,85 @@
         }
     }
 
+    function toggleQuickModeMenu(e) {
+        if (e.target.closest(".quick-mode-option")) return;
+        e.preventDefault();
+        e.stopPropagation();
+        setQuickModeMenuOpen(!dom.quickModeMenu.classList.contains("open"));
+    }
+
+    function handleQuickModeKeydown(e) {
+        if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            setQuickModeMenuOpen(!dom.quickModeMenu.classList.contains("open"));
+        } else if (e.key === "ArrowDown") {
+            e.preventDefault();
+            setQuickModeMenuOpen(true);
+            dom.quickModeOptions[0]?.focus();
+        } else if (e.key === "Escape") {
+            closeQuickModeMenu();
+        }
+    }
+
+    async function handleQuickModeOption(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        await quickChangeMode(e.currentTarget.dataset.mode);
+    }
+
+    function setQuickModeMenuOpen(open) {
+        dom.quickModeMenu.classList.toggle("open", open);
+        dom.quickModeCard.setAttribute("aria-expanded", open ? "true" : "false");
+        updateQuickModeActive();
+    }
+
+    function closeQuickModeMenu() {
+        if (!dom.quickModeMenu) return;
+        setQuickModeMenuOpen(false);
+    }
+
+    function updateQuickModeActive() {
+        if (!dom.quickModeOptions) return;
+        dom.quickModeOptions.forEach((option) => {
+            option.classList.toggle("active", option.dataset.mode === state.settings.bypass_mode);
+        });
+    }
+
+    async function quickChangeMode(mode) {
+        if (!mode || state.connecting) return;
+        closeQuickModeMenu();
+
+        if (state.settings.bypass_mode === mode) {
+            updateQuickModeActive();
+            return;
+        }
+
+        const previousSettings = { ...state.settings };
+        const wasConnected = state.connected;
+
+        try {
+            if (wasConnected) {
+                await disconnect();
+            }
+
+            state.settings = { ...state.settings, bypass_mode: mode };
+            applySettingsToUI(state.settings);
+            updateInfoCards();
+            await persistSettings(state.settings);
+
+            if (wasConnected) {
+                await connect();
+            } else {
+                showToast(`Mod: ${modeNames[mode] || mode}`, "success");
+            }
+        } catch (err) {
+            state.settings = previousSettings;
+            applySettingsToUI(previousSettings);
+            updateInfoCards();
+            showToast(`Mod değiştirilemedi: ${err}`, "error");
+        }
+    }
+
     // ─── UI State Updates ───────────────────────────────────────
 
     function updateUI(status) {
@@ -346,9 +452,11 @@
 
     function updateInfoCards() {
         const s = state.settings;
+        const alternative = s.bypass_mode === "dpi_alternative";
         dom.infoMode.textContent = modeNames[s.bypass_mode] || s.bypass_mode;
-        dom.infoPort.textContent = s.proxy_port;
-        dom.infoFragment.textContent = s.fragment_size + " byte";
+        dom.infoPort.textContent = alternative ? "ALT" : s.proxy_port;
+        dom.infoFragment.textContent = alternative ? "SxDPI Alt" : s.fragment_size + " byte";
+        updateQuickModeActive();
     }
 
     // ─── Settings ───────────────────────────────────────────────
@@ -373,7 +481,9 @@
             dom.language.value = s.language;
             applyLanguage(s.language);
         }
-        dom.bypassMode.value = s.bypass_mode;
+        if ([...dom.bypassMode.options].some((option) => option.value === s.bypass_mode)) {
+            dom.bypassMode.value = s.bypass_mode;
+        }
         dom.fragmentSize.value = s.fragment_size;
         dom.fragmentSizeValue.textContent = s.fragment_size;
         dom.fragmentDelay.value = s.fragment_delay_ms;
@@ -384,6 +494,7 @@
 
     function collectSettingsFromUI() {
         return {
+            ...state.settings,
             language: dom.language.value,
             bypass_mode: dom.bypassMode.value,
             fragment_size: parseInt(dom.fragmentSize.value, 10),
@@ -393,15 +504,19 @@
         };
     }
 
+    async function persistSettings(settings) {
+        if (invoke) {
+            await invoke("save_settings", { settings });
+        }
+    }
+
     async function saveSettings() {
         const settings = collectSettingsFromUI();
         state.settings = settings;
         updateInfoCards();
 
         try {
-            if (invoke) {
-                await invoke("save_settings", { settings });
-            }
+            await persistSettings(settings);
             // Saved feedback
             const dict = i18n[settings.language] || i18n.en;
             dom.saveBtn.classList.add("saved");

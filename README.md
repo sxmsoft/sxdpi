@@ -1,7 +1,7 @@
 <div align="center">
   <img src="https://raw.githubusercontent.com/sxmsoft/sxdpi/main/src/logo.png" alt="SxDPI Logo" width="256">
 
-  # SxDPI 0.1
+  # SxDPI 1.2.0
   **Advanced DPI Bypass Desktop Application**
 
   [![Tauri](https://img.shields.io/badge/Built%20with-Tauri%20v2-orange?style=for-the-badge&logo=tauri)](https://tauri.app/)
@@ -54,7 +54,7 @@ npx tauri android build
 
 SxDPI is a completely open-source project. It does not track user data, collect logs, or tunnel your traffic to any remote servers. 
 
-The VirusTotal scan result for the `SxDPI_1.0.0_x64-setup.exe` file is **2/71**. All major antivirus engines, including Microsoft Defender, Kaspersky, and BitDefender, have fully verified that the application is completely safe and undetected.
+The VirusTotal scan result for the `SxDPI_1.2.0_x64-setup.exe` file is **2/71**. All major antivirus engines, including Microsoft Defender, Kaspersky, and BitDefender, have fully verified that the application is completely safe and undetected.
 
 * **VirusTotal Report:** (https://www.virustotal.com/gui/file/4ddb8662105371725b960f9fdae9d1561e7a599191ce8be65a4c1141ebd62043/detection)
 

@@ -48,7 +48,7 @@
         </nav>
 
         <div class="sidebar-footer">
-            <span class="version-text">v1.0.0</span>
+            <span class="version-text">v1.2.0</span>
         </div>
     </aside>
 
@@ -79,9 +79,16 @@
 
                 <!-- Bilgi Kartları -->
                 <div class="info-cards">
-                    <div class="info-card">
+                    <div id="quick-mode-card" class="info-card mode-card" role="button" tabindex="0" aria-haspopup="listbox" aria-expanded="false">
                         <span class="info-label" data-i18n="info_mode">Mod</span>
                         <span id="info-mode" class="info-value">TCP Fragmentation</span>
+                        <div id="quick-mode-menu" class="quick-mode-menu" role="listbox" aria-label="Quick mode change">
+                            <button type="button" class="quick-mode-option" data-mode="tcp_fragmentation">TCP Fragmentation</button>
+                            <button type="button" class="quick-mode-option" data-mode="dpi_alternative">SxDPI Alternative</button>
+                            <button type="button" class="quick-mode-option" data-mode="fake_packet">Fake Packet</button>
+                            <button type="button" class="quick-mode-option" data-mode="host_manipulation">Host Manipulation</button>
+                            <button type="button" class="quick-mode-option" data-mode="combined">Combined</button>
+                        </div>
                     </div>
                     <div class="info-card">
                         <span class="info-label">Port</span>
@@ -117,6 +124,7 @@
                     <div class="select-wrapper">
                         <select id="setting-bypass-mode" class="setting-select">
                             <option value="tcp_fragmentation" data-i18n="mode_tcp">TCP Fragmentation</option>
+                            <option value="dpi_alternative" data-i18n="mode_alt">SxDPI Alternative</option>
                             <option value="fake_packet" data-i18n="mode_fake">Fake Packet</option>
                             <option value="host_manipulation" data-i18n="mode_host">Host Manipulation</option>
                             <option value="combined" data-i18n="mode_combined">Combined (Tümü)</option>

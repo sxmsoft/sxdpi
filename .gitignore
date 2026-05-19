@@ -23,3 +23,10 @@ Thumbs.db
 # SxDPI specific
 app-icon.png
 app-icon-sq.png
+turkey_dnsredir.cmd
+x86/
+x86_64/
+goodbyedpi.exe
+sxdpialternative.exe
+WinDivert.dll
+WinDivert64.sys

@@ -21,6 +21,8 @@ pub enum SettingsError {
 pub enum BypassMode {
     /// Sadece TCP fragmentation — TLS ClientHello'yu parçalar
     TcpFragmentation,
+    /// Harici SxDPI Alternative motorunu kullanir
+    DpiAlternative,
     /// Fake paket enjeksiyonu — düşük TTL ile sahte SNI gönderir
     FakePacket,
     /// Host header manipülasyonu — HTTP Host header'ını karıştırır
@@ -39,6 +41,7 @@ impl std::fmt::Display for BypassMode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             BypassMode::TcpFragmentation => write!(f, "TCP Fragmentation"),
+            BypassMode::DpiAlternative => write!(f, "SxDPI Alternative"),
             BypassMode::FakePacket => write!(f, "Fake Packet"),
             BypassMode::HostManipulation => write!(f, "Host Manipulation"),
             BypassMode::Combined => write!(f, "Combined"),

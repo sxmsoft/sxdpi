@@ -1,3 +1,4 @@
+mod alternative_engine;
 mod commands;
 mod dns;
 mod dpi_engine;
@@ -35,6 +36,7 @@ pub fn run() {
 
     // DPI Engine'i oluştur (thread-safe)
     let engine = Arc::new(Mutex::new(DpiEngine::new(settings)));
+    let engine_for_shutdown = engine.clone();
     let engine_state = EngineState(engine);
 
     tauri::Builder::default()
@@ -153,12 +155,20 @@ pub fn run() {
         })
         .build(tauri::generate_context!())
         .expect("SxDPI uygulaması başlatılırken hata oluştu")
-        .run(|_app_handle, event| {
+        .run(move |_app_handle, event| {
             if let RunEvent::ExitRequested { .. } = event {
                 log::info!("Uygulama kapanıyor, proxy temizleniyor...");
+                crate::system_proxy::begin_shutdown_cleanup();
+                if let Ok(mut engine) = engine_for_shutdown.try_lock() {
+                    engine.force_stop();
+                }
                 let _ = crate::system_proxy::unset_system_proxy();
             } else if let RunEvent::Exit = event {
                 log::info!("Uygulama kapandı, proxy temizleniyor...");
+                crate::system_proxy::begin_shutdown_cleanup();
+                if let Ok(mut engine) = engine_for_shutdown.try_lock() {
+                    engine.force_stop();
+                }
                 let _ = crate::system_proxy::unset_system_proxy();
             }
         });

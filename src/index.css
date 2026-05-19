@@ -492,6 +492,95 @@ body::before {
     color: var(--accent-cyan);
 }
 
+.mode-card {
+    position: relative;
+    cursor: pointer;
+    user-select: none;
+    min-width: 0;
+}
+
+.mode-card:focus-visible {
+    outline: none;
+    border-color: var(--border-glow);
+    box-shadow: 0 0 0 2px rgba(255, 42, 42, 0.18);
+}
+
+.mode-card .info-value {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.mode-card .info-value::after {
+    content: '';
+    width: 0;
+    height: 0;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-top: 5px solid var(--text-muted);
+    flex: 0 0 auto;
+}
+
+.quick-mode-menu {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: calc(100% + 8px);
+    min-width: 176px;
+    display: none;
+    flex-direction: column;
+    gap: 4px;
+    padding: 6px;
+    background: rgba(16, 16, 16, 0.98);
+    border: 1px solid var(--border-glow);
+    border-radius: var(--radius-sm);
+    box-shadow: 0 16px 34px rgba(0, 0, 0, 0.42);
+    backdrop-filter: blur(14px);
+    z-index: 1100;
+}
+
+.quick-mode-menu.open {
+    display: flex;
+}
+
+.quick-mode-option {
+    width: 100%;
+    min-height: 32px;
+    padding: 0 10px;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-secondary);
+    font-family: var(--font-sans);
+    font-size: 12px;
+    font-weight: 500;
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: pointer;
+    transition: all 0.2s var(--ease-out);
+}
+
+.quick-mode-option:hover,
+.quick-mode-option:focus-visible {
+    outline: none;
+    background: var(--bg-card-hover);
+    border-color: var(--border-color);
+    color: var(--text-primary);
+}
+
+.quick-mode-option.active {
+    background: var(--accent-cyan-dim);
+    border-color: var(--border-glow);
+    color: var(--accent-cyan);
+}
+
 /* ─── Settings Panel ─────────────────────────────────────────── */
 
 .panel-content {

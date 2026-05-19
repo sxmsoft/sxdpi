@@ -1,5 +1,5 @@
 use crate::dpi_engine::DpiEngine;
-use crate::settings::Settings;
+use crate::settings::{BypassMode, Settings};
 use crate::system_proxy;
 use std::sync::Arc;
 use tauri::State;
@@ -22,15 +22,25 @@ pub async fn connect_dpi(engine: State<'_, EngineState>) -> Result<String, Strin
     // Mevcut ayarları al
     let settings = Settings::load().unwrap_or_default();
     let port = settings.proxy_port;
+    let mode = settings.bypass_mode.clone();
 
     // Ayarları güncelle
     engine_guard.update_settings(settings);
+
+    if mode == BypassMode::DpiAlternative {
+        let _ = system_proxy::unset_system_proxy();
+    }
 
     // Motoru başlat
     engine_guard
         .start()
         .await
         .map_err(|e| format!("Motor başlatılamadı: {}", e))?;
+
+    if mode == BypassMode::DpiAlternative {
+        log::info!("SxDPI Alternative aktif.");
+        return Ok("SxDPI Alternative On".to_string());
+    }
 
     // Sistem proxy'sini ayarla
     if let Err(e) = system_proxy::set_system_proxy(port) {

@@ -1,3 +1,4 @@
+use crate::alternative_engine::AlternativeProcess;
 use crate::dns;
 use crate::settings::{BypassMode, Settings};
 use std::net::SocketAddr;
@@ -6,7 +7,13 @@ use thiserror::Error;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::Notify;
-use tokio::time::{sleep, Duration};
+use tokio::time::{sleep, timeout, Duration};
+
+const INITIAL_READ_TIMEOUT: Duration = Duration::from_secs(10);
+const HEADER_READ_TIMEOUT: Duration = Duration::from_secs(2);
+const TLS_WAIT_TIMEOUT: Duration = Duration::from_secs(3);
+const OUTBOUND_CONNECT_TIMEOUT: Duration = Duration::from_secs(8);
+const MAX_PROXY_HEADER_SIZE: usize = 64 * 1024;
 
 // ─── Hata Tipleri ───────────────────────────────────────────────────────────
 
@@ -56,6 +63,7 @@ pub struct DpiEngine {
     state: EngineState,
     settings: Settings,
     shutdown_signal: Arc<Notify>,
+    alternative_process: Option<AlternativeProcess>,
 }
 
 impl DpiEngine {
@@ -64,6 +72,7 @@ impl DpiEngine {
             state: EngineState::Stopped,
             settings,
             shutdown_signal: Arc::new(Notify::new()),
+            alternative_process: None,
         }
     }
 
@@ -81,6 +90,17 @@ impl DpiEngine {
         }
 
         self.state = EngineState::Starting;
+
+        if self.settings.bypass_mode == BypassMode::DpiAlternative {
+            log::info!("SxDPI Alternative baslatiliyor...");
+            let process = AlternativeProcess::start()
+                .map_err(|e| EngineError::ConnectionError(e.to_string()))?;
+            self.alternative_process = Some(process);
+            self.state = EngineState::Running;
+            log::info!("SxDPI Alternative calisiyor.");
+            return Ok(());
+        }
+
         let port = self.settings.proxy_port;
         let bind_addr = format!("127.0.0.1:{}", port);
 
@@ -113,13 +133,21 @@ impl DpiEngine {
         self.state = EngineState::Stopping;
         log::info!("DPI Engine durduruluyor...");
 
-        self.shutdown_signal.notify_waiters();
-        self.shutdown_signal = Arc::new(Notify::new());
+        self.force_stop();
 
-        self.state = EngineState::Stopped;
         log::info!("DPI Engine durduruldu.");
 
         Ok(())
+    }
+
+    pub fn force_stop(&mut self) {
+        if let Some(mut process) = self.alternative_process.take() {
+            process.stop();
+        }
+
+        self.shutdown_signal.notify_waiters();
+        self.shutdown_signal = Arc::new(Notify::new());
+        self.state = EngineState::Stopped;
     }
 
     // ─── Proxy Döngüsü ─────────────────────────────────────────────────────
@@ -164,26 +192,85 @@ impl DpiEngine {
     ) -> Result<(), EngineError> {
         client.set_nodelay(true)?;
 
-        let mut initial_buf = vec![0u8; 16384];
-        let n = client.read(&mut initial_buf).await?;
-        if n == 0 {
+        let mut initial_data = Self::read_initial_bytes(&mut client).await?;
+        if initial_data.is_empty() {
             return Ok(());
         }
-        let initial_data = &initial_buf[..n];
-        let request_str = String::from_utf8_lossy(initial_data);
+        let n = initial_data.len();
+        let mut request_str = String::from_utf8_lossy(&initial_data).to_string();
 
         if request_str.starts_with("CONNECT ") {
-            Self::handle_connect(client, initial_data, &settings, shutdown).await
+            Self::read_until_header_complete(&mut client, &mut initial_data).await?;
+            request_str = String::from_utf8_lossy(&initial_data).to_string();
+            if !request_str.starts_with("CONNECT ") {
+                return Err(EngineError::ConnectionError(
+                    "Invalid CONNECT request".into(),
+                ));
+            }
+            Self::handle_connect(client, &initial_data, &settings, shutdown).await
         } else if Self::is_http_request(&request_str) {
-            Self::handle_http(client, initial_data, &settings, shutdown).await
+            Self::read_until_header_complete(&mut client, &mut initial_data).await?;
+            Self::handle_http(client, &initial_data, &settings, shutdown).await
         } else {
             log::warn!("Bilinmeyen protokol ({} byte), kapatılıyor", n);
             Ok(())
         }
     }
 
+    async fn read_initial_bytes(client: &mut TcpStream) -> Result<Vec<u8>, EngineError> {
+        let mut buf = vec![0u8; 16 * 1024];
+        let n = match timeout(INITIAL_READ_TIMEOUT, client.read(&mut buf)).await {
+            Ok(Ok(n)) => n,
+            Ok(Err(e)) => return Err(e.into()),
+            Err(_) => {
+                return Err(EngineError::ConnectionError(
+                    "Initial proxy read timed out".into(),
+                ))
+            }
+        };
+
+        buf.truncate(n);
+        Ok(buf)
+    }
+
+    async fn read_until_header_complete(
+        client: &mut TcpStream,
+        data: &mut Vec<u8>,
+    ) -> Result<(), EngineError> {
+        while find_header_end(data).is_none() {
+            if data.len() >= MAX_PROXY_HEADER_SIZE {
+                return Err(EngineError::ConnectionError(
+                    "Proxy header is too large".into(),
+                ));
+            }
+
+            let mut chunk = [0u8; 4096];
+            let n = match timeout(HEADER_READ_TIMEOUT, client.read(&mut chunk)).await {
+                Ok(Ok(n)) => n,
+                Ok(Err(e)) => return Err(e.into()),
+                Err(_) => {
+                    return Err(EngineError::ConnectionError(
+                        "Proxy header read timed out".into(),
+                    ))
+                }
+            };
+
+            if n == 0 {
+                return Err(EngineError::ConnectionError(
+                    "Proxy connection closed before headers completed".into(),
+                ));
+            }
+
+            data.extend_from_slice(&chunk[..n]);
+        }
+
+        Ok(())
+    }
+
     fn is_http_request(data: &str) -> bool {
-        let methods = ["GET ", "POST ", "PUT ", "DELETE ", "HEAD ", "OPTIONS ", "PATCH "];
+        let methods = [
+            "GET ", "POST ", "PUT ", "DELETE ", "HEAD ", "OPTIONS ", "PATCH ",
+        ];
         methods.iter().any(|m| data.starts_with(m))
     }
 
@@ -209,6 +296,8 @@ impl DpiEngine {
         } else {
             format!("{}:443", target_addr)
         };
+        let target_host = Self::host_from_target(&target_addr);
+        let compatibility_direct = Self::should_skip_bypass(&target_host);
 
         log::info!("CONNECT → {}", target_addr);
 
@@ -228,11 +317,31 @@ impl DpiEngine {
             .write_all(b"HTTP/1.1 200 Connection Established\r\n\r\n")
             .await?;
 
+        if let Some(header_end) = find_header_end(initial_data) {
+            if header_end < initial_data.len() {
+                let buffered_tls = &initial_data[header_end..];
+                log::debug!(
+                    "CONNECT contained {} buffered bytes after headers: {}",
+                    buffered_tls.len(),
+                    target_addr
+                );
+                Self::send_initial_client_data(
+                    &mut server,
+                    buffered_tls,
+                    settings,
+                    &target_addr,
+                    compatibility_direct,
+                )
+                .await?;
+                return Self::bidirectional_relay(client, server, shutdown).await;
+            }
+        }
+
         // TLS ClientHello'yu yakala
         let mut tls_buf = vec![0u8; 16384];
         let mut tls_n = 0;
         let mut timed_out = false;
-        
+
         tokio::select! {
             result = client.read(&mut tls_buf) => {
                 match result {
@@ -240,7 +349,7 @@ impl DpiEngine {
                     Err(e) => return Err(e.into()),
                 }
             },
-            _ = sleep(Duration::from_secs(3)) => {
+            _ = sleep(TLS_WAIT_TIMEOUT) => {
                 log::warn!("TLS bekleme zaman aşımı (3s), direkt şeffaf tünel başlatılıyor: {}", target_addr);
                 timed_out = true;
             }
@@ -254,15 +363,24 @@ impl DpiEngine {
             let tls_data = &tls_buf[..tls_n];
 
             // TLS ClientHello kontrolü: ContentType=0x16, HandshakeType=0x01
-            let is_client_hello = tls_n >= 6
-                && tls_data[0] == 0x16
-                && tls_data[5] == 0x01;
+            let is_client_hello = tls_n >= 6 && tls_data[0] == 0x16 && tls_data[5] == 0x01;
 
-            if is_client_hello {
+            if is_client_hello && compatibility_direct {
+                log::info!(
+                    "TLS ClientHello ({} byte) -> direct compatibility tunnel: {}",
+                    tls_n,
+                    target_addr
+                );
+                server.write_all(tls_data).await?;
+            } else if is_client_hello {
                 log::info!("TLS ClientHello ({} byte) → bypass: {}", tls_n, target_addr);
                 Self::send_with_bypass(&mut server, tls_data, settings).await?;
             } else {
-                log::info!("TLS olmayan veri ({} byte) → direkt: {}", tls_n, target_addr);
+                log::info!(
+                    "TLS olmayan veri ({} byte) → direkt: {}",
+                    tls_n,
+                    target_addr
+                );
                 server.write_all(tls_data).await?;
             }
         }
@@ -293,6 +411,7 @@ impl DpiEngine {
 
         let (host, port, path) = Self::parse_proxy_url(url)?;
         let target_addr = format!("{}:{}", host, port);
+        let compatibility_direct = Self::should_skip_bypass(&host);
 
         log::info!("HTTP {} {} → {}", method, path, target_addr);
 
@@ -321,13 +440,13 @@ impl DpiEngine {
                 has_host = true;
                 let host_value = line.splitn(2, ':').nth(1).unwrap_or("").trim();
 
-                let header_name = if settings.enable_host_mixcase {
+                let header_name = if !compatibility_direct && settings.enable_host_mixcase {
                     Self::mixcase_string("Host")
                 } else {
                     "Host".to_string()
                 };
 
-                let host_modified = if settings.enable_dot_after_host {
+                let host_modified = if !compatibility_direct && settings.enable_dot_after_host {
                     format!("{}.", host_value.trim_end_matches('.'))
                 } else {
                     host_value.to_string()
@@ -335,7 +454,7 @@ impl DpiEngine {
 
                 modified_request.push_str(&format!("{}: {}\r\n", header_name, host_modified));
 
-                if settings.enable_header_padding {
+                if !compatibility_direct && settings.enable_header_padding {
                     modified_request.push_str(&format!("X-Padding: {}\r\n", "x".repeat(32)));
                 }
             } else if lower.starts_with("proxy-connection:") {
@@ -363,7 +482,12 @@ impl DpiEngine {
         }
 
         // Gönder
-        Self::send_with_bypass(&mut server, &request_bytes, settings).await?;
+        if compatibility_direct {
+            log::info!("HTTP direct compatibility tunnel: {}", target_addr);
+            server.write_all(&request_bytes).await?;
+        } else {
+            Self::send_with_bypass(&mut server, &request_bytes, settings).await?;
+        }
 
         // Bidirectional relay
         Self::bidirectional_relay(client, server, shutdown).await
@@ -375,6 +499,7 @@ impl DpiEngine {
             return Err(EngineError::ConnectionError("Relative URL".into()));
         }
 
+        let default_port = if url.starts_with("https://") { 443 } else { 80 };
         let without_scheme = url
             .strip_prefix("http://")
             .or_else(|| url.strip_prefix("https://"))
@@ -390,10 +515,10 @@ impl DpiEngine {
             if let Ok(port) = port_str.parse::<u16>() {
                 (host_port[..colon_idx].to_string(), port)
             } else {
-                (host_port.to_string(), 80)
+                (host_port.to_string(), default_port)
             }
         } else {
-            (host_port.to_string(), 80)
+            (host_port.to_string(), default_port)
         };
 
         if host.is_empty() {
@@ -404,9 +529,9 @@ impl DpiEngine {
     }
 
     // ═══════════════════════════════════════════════════════════════════════
-    //  DPI BYPASS TEKNİKLERİ — GoodbyeDPI'dan esinlenerek
+    //  DPI BYPASS TEKNİKLERİ — SxDPI Alternative yaklaşımından esinlenerek
     //
-    //  GoodbyeDPI'ın temel yaklaşımı:
+    //  SxDPI Alternative temel yaklaşımı:
     //  • İlk birkaç byte'ı ayrı TCP segmenti olarak gönder (SNI/Host'u böl)
     //  • Kalanını tek seferde gönder (hız kaybetme!)
     //  • Tüm paketi parçalama → timeout'a yol açar
@@ -418,26 +543,56 @@ impl DpiEngine {
         settings: &Settings,
     ) -> Result<(), EngineError> {
         match settings.bypass_mode {
-            BypassMode::TcpFragmentation => {
-                Self::send_fragmented(server, data, settings).await
-            }
-            BypassMode::FakePacket => {
-                Self::send_with_desync(server, data, settings).await
-            }
+            BypassMode::TcpFragmentation => Self::send_fragmented(server, data, settings).await,
+            BypassMode::DpiAlternative => server.write_all(data).await.map_err(EngineError::from),
+            BypassMode::FakePacket => Self::send_with_desync(server, data, settings).await,
             BypassMode::HostManipulation => {
                 // Host manipülasyonu zaten handle_http'de uygulandı.
                 // Burada sadece basit 2-parça fragmentation uygula.
                 Self::send_fragmented(server, data, settings).await
             }
-            BypassMode::Combined => {
-                Self::send_combined(server, data, settings).await
-            }
+            BypassMode::Combined => Self::send_combined(server, data, settings).await,
         }
     }
 
-    /// TCP Fragmentation — GoodbyeDPI tarzı.
+    async fn send_initial_client_data(
+        server: &mut TcpStream,
+        data: &[u8],
+        settings: &Settings,
+        target_addr: &str,
+        compatibility_direct: bool,
+    ) -> Result<(), EngineError> {
+        let is_client_hello = data.len() >= 6 && data[0] == 0x16 && data[5] == 0x01;
+
+        if is_client_hello && compatibility_direct {
+            log::info!(
+                "TLS ClientHello ({} byte) -> direct compatibility tunnel: {}",
+                data.len(),
+                target_addr
+            );
+            server.write_all(data).await?;
+        } else if is_client_hello {
+            log::info!(
+                "TLS ClientHello ({} byte) -> bypass: {}",
+                data.len(),
+                target_addr
+            );
+            Self::send_with_bypass(server, data, settings).await?;
+        } else {
+            log::info!(
+                "Initial tunnel data ({} byte) -> direct: {}",
+                data.len(),
+                target_addr
+            );
+            server.write_all(data).await?;
+        }
+
+        Ok(())
+    }
+
+    /// TCP Fragmentation — SxDPI Alternative tarzı.
     ///
-    /// GoodbyeDPI sadece İLK birkaç byte'ı ayırır, sonra kalanını tek seferde gönderir.
+    /// Alternatif motor sadece İLK birkaç byte'ı ayırır, sonra kalanını tek seferde gönderir.
     /// Bu, SNI/Host bilgisini ilk TCP segmentinden bölerek DPI'ın onu
     /// tespit etmesini engeller.
     ///
@@ -452,7 +607,9 @@ impl DpiEngine {
 
         log::info!(
             "Fragment: {} byte veri → ilk {} byte ayrı, kalan {} byte toplu",
-            data.len(), frag_size, data.len().saturating_sub(frag_size)
+            data.len(),
+            frag_size,
+            data.len().saturating_sub(frag_size)
         );
 
         // 1. İlk fragment_size byte'ı gönder (SNI/Host'u kırmak için)
@@ -473,7 +630,7 @@ impl DpiEngine {
         Ok(())
     }
 
-    /// Desync tekniği — GoodbyeDPI'ın "first byte + delay" yaklaşımı.
+    /// Desync tekniği — SxDPI Alternative "first byte + delay" yaklaşımı.
     ///
     /// 1. İlk 1 byte gönder (DPI stream takibini başlat)
     /// 2. Gecikme (DPI reassembly buffer'ını zorla)
@@ -514,7 +671,7 @@ impl DpiEngine {
         Ok(())
     }
 
-    /// Combined — GoodbyeDPI mode -9 benzeri.
+    /// Combined — SxDPI Alternative mode -9 benzeri.
     ///
     /// 3 parçaya böler: [ilk 1 byte] + [sonraki fragment_size byte] + [kalan tümü]
     /// Her parça arasında kısa gecikme.
@@ -531,8 +688,9 @@ impl DpiEngine {
         let frag_size = settings.fragment_size.max(2).min(data.len() - 1);
         let delay = Duration::from_millis(settings.fragment_delay_ms);
 
-        log::info!("Combined: {} byte → 1 + {} + {} byte", 
-            data.len(), 
+        log::info!(
+            "Combined: {} byte → 1 + {} + {} byte",
+            data.len(),
             frag_size.min(data.len() - 1),
             data.len().saturating_sub(1 + frag_size)
         );
@@ -563,22 +721,85 @@ impl DpiEngine {
     /// ISP DNS poisoning'ini bypass eder.
     async fn connect_resolved(target: &str) -> Result<TcpStream, EngineError> {
         // host:port olarak ayır
-        let (host, port_str) = target.rsplit_once(':')
+        let (host, port_str) = target
+            .rsplit_once(':')
             .ok_or_else(|| EngineError::ConnectionError(format!("Geçersiz adres: {}", target)))?;
-        let port: u16 = port_str.parse()
+        let port: u16 = port_str
+            .parse()
             .map_err(|_| EngineError::ConnectionError(format!("Geçersiz port: {}", port_str)))?;
 
         // Güvenli DNS ile çözümle
-        let ip = dns::resolve(host).await
+        let ips = dns::resolve_all(host)
+            .await
             .map_err(|e| EngineError::ConnectionError(format!("{}: {}", target, e)))?;
 
-        let addr = SocketAddr::new(ip, port);
-        log::info!("DNS: {} → {} (bağlanılıyor...)", target, addr);
+        let mut last_error = None;
+        for ip in ips {
+            let addr = SocketAddr::new(ip, port);
+            log::info!("DNS: {} -> {} (connecting...)", target, addr);
 
-        let stream = TcpStream::connect(addr).await
-            .map_err(|e| EngineError::ConnectionError(format!("{} ({}): {}", target, addr, e)))?;
+            match timeout(OUTBOUND_CONNECT_TIMEOUT, TcpStream::connect(addr)).await {
+                Ok(Ok(stream)) => return Ok(stream),
+                Ok(Err(e)) => {
+                    last_error = Some(format!("{} ({}): {}", target, addr, e));
+                    log::debug!("TCP connect failed: {} ({})", target, addr);
+                }
+                Err(_) => {
+                    last_error = Some(format!("{} ({}) timed out", target, addr));
+                    log::debug!("TCP connect timed out: {} ({})", target, addr);
+                }
+            }
+        }
 
-        Ok(stream)
+        Err(EngineError::ConnectionError(last_error.unwrap_or_else(
+            || format!("{}: no resolved addresses", target),
+        )))
+    }
+
+    fn host_from_target(target: &str) -> String {
+        target
+            .rsplit_once(':')
+            .map(|(host, _)| host)
+            .unwrap_or(target)
+            .trim()
+            .trim_start_matches('[')
+            .trim_end_matches(']')
+            .trim_end_matches('.')
+            .to_ascii_lowercase()
+    }
+
+    fn should_skip_bypass(host: &str) -> bool {
+        const DIRECT_SUFFIXES: &[&str] = &[
+            "microsoft.com",
+            "microsoftonline.com",
+            "windows.com",
+            "windows.net",
+            "windowsupdate.com",
+            "mp.microsoft.com",
+            "delivery.mp.microsoft.com",
+            "s-microsoft.com",
+            "msedge.net",
+            "azureedge.net",
+            "trafficmanager.net",
+            "akamaized.net",
+            "akamaihd.net",
+            "akadns.net",
+            "live.com",
+            "xboxlive.com",
+            "xboxservices.com",
+            "bing.com",
+        ];
+
+        let host = host
+            .trim()
+            .trim_start_matches('[')
+            .trim_end_matches(']')
+            .trim_end_matches('.')
+            .to_ascii_lowercase();
+
+        DIRECT_SUFFIXES
+            .iter()
+            .any(|suffix| host == *suffix || host.ends_with(&format!(".{}", suffix)))
     }
 
     fn mixcase_string(s: &str) -> String {
@@ -658,10 +879,7 @@ impl DpiEngine {
 /// HTTP header sonunu (\r\n\r\n) bulur ve sonraki byte'ın index'ini döner.
 fn find_header_end(data: &[u8]) -> Option<usize> {
     for i in 0..data.len().saturating_sub(3) {
-        if data[i] == b'\r'
-            && data[i + 1] == b'\n'
-            && data[i + 2] == b'\r'
-            && data[i + 3] == b'\n'
+        if data[i] == b'\r' && data[i + 1] == b'\n' && data[i + 2] == b'\r' && data[i + 3] == b'\n'
         {
             return Some(i + 4);
         }
